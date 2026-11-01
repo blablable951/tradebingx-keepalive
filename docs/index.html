@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TradeBingX — dashboard</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; font-family: ui-monospace, Menlo, Consolas, monospace;
+         background: #0b0f14; color: #d7e0ea; }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 28px 18px 48px; }
+  h1 { font-size: 22px; margin: 0 0 6px; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 1px;
+       color: #8fa3b8; margin: 24px 0 8px; }
+  .muted { color: #8fa3b8; font-size: 12px; line-height: 1.6; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; margin: 14px 0; }
+  input { flex: 1 1 320px; padding: 9px 10px; border-radius: 8px;
+          border: 1px solid #26506f; background: #111821; color: #d7e0ea; }
+  button { padding: 9px 14px; border-radius: 8px; border: 1px solid #26506f;
+           background: #17324a; color: #6fc2ff; cursor: pointer; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+          gap: 10px; }
+  .card { background: #111821; border: 1px solid #1e2a37; border-radius: 10px;
+          padding: 12px 14px; }
+  .label { color: #7f93a8; font-size: 10px; text-transform: uppercase;
+           letter-spacing: 0.8px; }
+  .value { font-size: 19px; margin-top: 6px; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid #1e2a37; }
+  th { color: #7f93a8; font-weight: normal; font-size: 10px;
+       text-transform: uppercase; letter-spacing: 0.6px; }
+  footer { margin-top: 26px; color: #62758a; font-size: 11px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>TradeBingX</h1>
+  <p class="muted">
+    Read-only dashboard. GitHub Pages only serves this page; the bot and the API
+    run on Render. Paste the Render URL below. No 90% accuracy promise.
+  </p>
+
+  <div class="row">
+    <input id="api" placeholder="https://your-service.onrender.com">
+    <button onclick="saveApi()">Connect</button>
+  </div>
+
+  <div class="grid">
+    <div class="card"><div class="label">Mode</div><div id="mode" class="value">-</div></div>
+    <div class="card"><div class="label">Runner</div><div id="runner" class="value">-</div></div>
+    <div class="card"><div class="label">Equity</div><div id="equity" class="value">-</div></div>
+    <div class="card"><div class="label">Price</div><div id="price" class="value">-</div></div>
+    <div class="card"><div class="label">Position</div><div id="position" class="value">-</div></div>
+    <div class="card"><div class="label">Signal</div><div id="signal" class="value">-</div></div>
+  </div>
+
+  <h2>Recent trades</h2>
+  <table>
+    <thead><tr><th>Time</th><th>Side</th><th>Qty</th><th>Price</th><th>Reason</th></tr></thead>
+    <tbody id="trades"><tr><td colspan="5">-</td></tr></tbody>
+  </table>
+
+  <footer id="updated">not connected</footer>
+</div>
+<script>
+var params = new URLSearchParams(location.search);
+var base = params.get('api') || localStorage.getItem('tradebingx_api') || 'https://tradebingx.onrender.com';
+document.getElementById('api').value = base;
+
+function saveApi() {
+  base = document.getElementById('api').value.trim().replace(/\/$/, '');
+  localStorage.setItem('tradebingx_api', base);
+  load();
+}
+function fmt(value, digits) {
+  if (value === null || value === undefined || isNaN(Number(value))) return '-';
+  return Number(value).toFixed(digits);
+}
+function setText(id, value) {
+  document.getElementById(id).textContent = value;
+}
+async function load() {
+  if (!base) {
+    setText('updated', 'enter the Render URL and press Connect');
+    return;
+  }
+  try {
+    var res = await fetch(base + '/api/status', {cache: 'no-store'});
+    var data = await res.json();
+    var hb = data.heartbeat || {};
+    var paper = data.paper || {};
+    var cfg = data.config || {};
+    var svc = data.service || {};
+    var pos = paper.position || {};
+    setText('mode', (cfg.mode || 'paper').toUpperCase());
+    setText('runner', svc.running ? 'running' : 'stopped');
+    setText('equity', fmt(hb.equity !== undefined ? hb.equity : paper.cash, 2));
+    setText('price', fmt(hb.price, 2));
+    setText('position', fmt(pos.qty !== undefined ? pos.qty : hb.position, 6));
+    setText('signal', hb.last_signal === undefined ? '-' : String(hb.last_signal));
+    var rows = (paper.trades || []).slice().reverse();
+    var tbody = document.getElementById('trades');
+    if (!rows.length) {
+      tbody.innerHTML = '<tr><td colspan="5">no trades yet</td></tr>';
+    } else {
+      tbody.innerHTML = rows.map(function(t) {
+        var when = t.time ? new Date(Number(t.time) * 1000).toLocaleString() : '-';
+        return '<tr><td>' + when + '</td><td>' + (t.side || '') + '</td><td>' +
+          fmt(t.quantity, 6) + '</td><td>' + fmt(t.price, 2) + '</td><td>' +
+          (t.reason || '') + '</td></tr>';
+      }).join('');
+    }
+    setText('updated', 'updated ' + new Date().toLocaleString() +
+      (svc.error ? ' | error: ' + svc.error : ''));
+  } catch (err) {
+    setText('updated', 'status error: ' + err);
+  }
+}
+load();
+setInterval(load, 15000);
+</script>
+</body>
+</html>
